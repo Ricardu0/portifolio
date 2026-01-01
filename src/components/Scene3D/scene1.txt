@@ -15,17 +15,10 @@ function SceneContent() {
     const speedRef = useRef(0)
     const steeringAngleRef = useRef(0)
     const isDriftingRef = useRef(false)
-
     const followCameraRef = useRef(true)
-    const cinematicCarFocusRef = useRef(false)
-    const moonFocusRef = useRef(false)
 
     const cameraOffsetRef = useRef(new THREE.Vector3(3, 2.5, -6))
     const cameraShakeRef = useRef(0)
-
-    // 🌙 LUA BEM ALTA PARA OLHAR DE BAIXO PRA CIMA
-    const moonTargetRef = useRef(new THREE.Vector3(0, 120, -200))
-    const focusTargetRef = useRef(new THREE.Vector3())
 
     const { camera } = useThree()
     const tlRef = useRef()
@@ -37,9 +30,10 @@ function SceneContent() {
 
     useFrame((state, delta) => {
         if (!carRef.current) return
+
         const car = carRef.current
 
-        // ===== MOVIMENTO DO CARRO =====
+        // Movimento do carro
         car.getWorldDirection(forward.current)
         forward.current.y = 0
         forward.current.normalize()
@@ -50,46 +44,26 @@ function SceneContent() {
 
         car.rotation.y += steeringAngleRef.current * delta * 0.18
 
-        // ===== POSIÇÃO DA CÂMERA =====
+        // Camera follow
         if (followCameraRef.current) {
             const offset = cameraOffsetRef.current.clone().applyQuaternion(car.quaternion)
             desiredCamPos.current.copy(car.position).add(offset)
+
             camera.position.lerp(desiredCamPos.current, 0.1)
+
+            const lookAt = car.position.clone().add(forward.current.clone().multiplyScalar(10))
+            camera.lookAt(lookAt)
+
+            camera.rotation.z = THREE.MathUtils.lerp(
+                camera.rotation.z,
+                -steeringAngleRef.current * 0.12,
+                0.08
+            )
+
+            const shake = cameraShakeRef.current
+            camera.position.y += Math.sin(state.clock.elapsedTime * 22) * shake
+            camera.position.x += Math.cos(state.clock.elapsedTime * 13) * shake * 0.4
         }
-
-        // ===== FOCO COM HIERARQUIA =====
-        if (moonFocusRef.current) {
-            // 🌙 PRIORIDADE ABSOLUTA NA LUA
-            focusTargetRef.current.lerp(moonTargetRef.current, 0.06)
-
-        } else if (cinematicCarFocusRef.current) {
-            // 🎥 FRENTE DO CARRO
-            const carFront = car.position
-                .clone()
-                .add(forward.current.clone().multiplyScalar(14))
-
-            focusTargetRef.current.lerp(carFront, 0.08)
-
-        } else {
-            // 🚗 FOLLOW PADRÃO
-            const followTarget = car.position
-                .clone()
-                .add(forward.current.clone().multiplyScalar(10))
-
-            focusTargetRef.current.lerp(followTarget, 0.1)
-        }
-
-        camera.lookAt(focusTargetRef.current)
-
-        camera.rotation.z = THREE.MathUtils.lerp(
-            camera.rotation.z,
-            -steeringAngleRef.current * 0.12,
-            0.08
-        )
-
-        const shake = cameraShakeRef.current
-        camera.position.y += Math.sin(state.clock.elapsedTime * 20) * shake
-        camera.position.x += Math.cos(state.clock.elapsedTime * 14) * shake * 0.4
     })
 
     useEffect(() => {
@@ -97,62 +71,82 @@ function SceneContent() {
         const tl = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
         tlRef.current = tl
 
-        // ===== SPAWN =====
-        tl.fromTo(
-            carRef.current.scale,
+        // 1) SPAWN
+        tl.fromTo(carRef.current.scale,
             { x: 0, y: 0, z: 0 },
             { x: 1, y: 0.8, z: 0.8, duration: 0.9, ease: 'back.out(1.6)' }
         )
 
-        tl.to(speedRef, { current: 6.2, duration: 1.6 })
-        tl.to(speedRef, { current: 3.8, duration: 0.4 })
+        tl.fromTo(cameraOffsetRef.current,
+            { x: 6, y: 1.8, z: -10 },
+            { x: 3, y: 2.5, z: -6, duration: 1 }
+        )
 
-        // ===== DRIFT =====
-        tl.to(isDriftingRef, { current: true, duration: 0.05 })
-        tl.to(steeringAngleRef, { current: 1.1, duration: 0.25 })
+        // 2) ACELERA
+        tl.to(speedRef, { current: 6.2, duration: 1.6, ease: 'power2.in' })
 
-        tl.to(carRef.current.rotation, {
-            y: `+=${Math.PI}`,
-            duration: 1.2,
-            ease: 'power1.inOut',
-            onUpdate() {
-                steeringAngleRef.current =
-                    Math.sin(this.progress() * Math.PI) * 1.2
+        // 3) LEVE FREADA
+        tl.to(speedRef, { current: 3.8, duration: 0.45 })
+
+        // ⭐ ALTERAÇÃO — CÂMERA FIXA ANTES DO DRIFT
+        tl.call(() => {
+            followCameraRef.current = false
+        })
+
+        // posiciona câmera bem próxima da dianteira
+        tl.to(camera.position, {
+            x: () => carRef.current.position.x + 0,
+            y: () => carRef.current.position.y + 1.6,
+            z: () => carRef.current.position.z - 4,
+            duration: 0.6,
+            ease: 'power2.out',
+            onUpdate: () => {
+                camera.lookAt(carRef.current.position)
             }
         })
 
-        tl.to(steeringAngleRef, { current: 0, duration: 0.4 })
+        // 4) DRIFT 180°
+        tl.to(isDriftingRef, { current: true, duration: 0.05 })
+
+        tl.to(steeringAngleRef, { current: 1.1, duration: 0.25 })
+
+        tl.to(cameraShakeRef, { current: 0.15, duration: 0.1 })
+
+        tl.to(carRef.current.rotation, {
+            y: `+=${Math.PI}`,
+            duration: 1.25,
+            ease: 'power1.inOut',
+            onUpdate() {
+                steeringAngleRef.current = Math.sin(this.progress() * Math.PI) * 1.1
+            }
+        })
+
         tl.to(isDriftingRef, { current: false, duration: 0.3 })
+        tl.to(steeringAngleRef, { current: 0, duration: 0.4 })
+        tl.to(cameraShakeRef, { current: 0, duration: 0.4 })
+
+        // ⭐ ALTERAÇÃO — VOLTA O FOLLOW
+        tl.call(() => {
+            followCameraRef.current = true
+        })
+
+        // 5) FREADA FINAL
         tl.to(speedRef, { current: 0, duration: 1 })
 
-        // ===== ETAPA 1 — FRENTE DO CARRO =====
+        // 6) LUA
         tl.call(() => {
             followCameraRef.current = false
-            cinematicCarFocusRef.current = true
+            setShowMoon(true)
         })
 
         tl.to(camera.position, {
             x: 0,
-            y: 10,
-            z: carRef.current.position.z + 16,
+            y: 14,
+            z: carRef.current.position.z + 6,
             duration: 2
         })
 
-        // ===== ETAPA 2 — FOCO FINAL NA LUA =====
-        tl.call(() => {
-            cinematicCarFocusRef.current = false
-            moonFocusRef.current = true
-            setShowMoon(true)
-        })
-
-        // 📸 CÂMERA BAIXA, OLHANDO PRA CIMA
-        tl.to(camera.position, {
-            x: 10,
-            y: 6,
-            z: carRef.current.position.z + 40,
-            duration: 2.6,
-            ease: 'power2.inOut'
-        })
+        tl.to(camera.rotation, { x: 0.55, duration: 2 }, '<')
 
     }, [camera])
 
@@ -178,7 +172,7 @@ function SceneContent() {
 
 export default function Scene() {
     return (
-        <Canvas camera={{ position: [0, 3, 10], fov: 52 }} shadows>
+        <Canvas camera={{ position: [0, 3.2, 10], fov: 52 }} shadows>
             <CameraController />
             <SceneContent />
         </Canvas>

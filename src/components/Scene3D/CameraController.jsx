@@ -1,17 +1,16 @@
+// src/components/Scene3D/CameraController.jsx
 import { useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
-import * as THREE from 'three'
 
 export default function CameraController() {
     const { camera } = useThree()
 
     useEffect(() => {
-        camera.position.set(0, 2.2, 10)
+        // Define APENAS a posição inicial
+        // O useFrame no SceneContent vai assumir o controle depois
+        camera.position.set(0, 2.5, 12)
     }, [camera])
 
-    useEffect(() => {
-        camera.lookAt(new THREE.Vector3(0, 0, 0))
-    }, [camera])
-
+    // NÃO faz lookAt aqui para não interferir com o useFrame
     return null
 }
