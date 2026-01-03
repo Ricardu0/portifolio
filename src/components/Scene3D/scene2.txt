@@ -21,6 +21,7 @@ function SceneContent() {
 
     const cameraOffsetRef = useRef(new THREE.Vector3(3, 2.5, -6))
     const cameraShakeRef = useRef(0)
+    const fovRef = useRef(52) // FOV dinâmico
 
     const moonTargetRef = useRef(new THREE.Vector3(0, 120, -200))
     const focusTargetRef = useRef(new THREE.Vector3())
@@ -47,6 +48,10 @@ function SceneContent() {
         car.position.add(tmpVec.current)
 
         car.rotation.y += steeringAngleRef.current * delta * 0.18
+
+        // ===== FOV DINÂMICO =====
+        camera.fov = THREE.MathUtils.lerp(camera.fov, fovRef.current, 0.05)
+        camera.updateProjectionMatrix()
 
         // ===== POSIÇÃO DA CÂMERA =====
         if (followCameraRef.current) {
@@ -95,19 +100,33 @@ function SceneContent() {
         const tl = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
         tlRef.current = tl
 
-        // ===== SPAWN =====
+        // ===== SPAWN CINEMATOGRÁFICO =====
+        // Câmera começa mais fechada (zoom in)
+        tl.set(fovRef, { current: 35 })
+
         tl.fromTo(
             carRef.current.scale,
             { x: 0, y: 0, z: 0 },
             { x: 1, y: 0.8, z: 0.8, duration: 0.9, ease: 'back.out(1.6)' }
         )
 
-        tl.to(speedRef, { current: 6.2, duration: 1.6 })
-        tl.to(speedRef, { current: 3.8, duration: 0.4 })
+        // FOV abre durante spawn (efeito dramático)
+        tl.to(fovRef, { current: 52, duration: 1.2, ease: 'power2.out' }, '<0.3')
 
-        // ===== DRIFT =====
+        tl.to(speedRef, { current: 6.2, duration: 1.6 })
+
+        // Speed ramp: aceleração com FOV aumentando (sensação de velocidade)
+        tl.to(fovRef, { current: 58, duration: 0.8, ease: 'power1.in' }, '<0.8')
+
+        tl.to(speedRef, { current: 3.8, duration: 0.4 })
+        tl.to(fovRef, { current: 52, duration: 0.4 }, '<') // FOV volta ao normal
+
+        // ===== DRIFT CINEMATOGRÁFICO =====
         tl.to(isDriftingRef, { current: true, duration: 0.05 })
         tl.to(steeringAngleRef, { current: 1.1, duration: 0.25 })
+
+        // Camera shake sutil durante drift
+        tl.to(cameraShakeRef, { current: 0.015, duration: 0.2 }, '<')
 
         tl.to(carRef.current.rotation, {
             y: `+=${Math.PI}`,
@@ -119,37 +138,83 @@ function SceneContent() {
             }
         })
 
+        // FOV dinâmico durante drift (dolly zoom effect)
+        tl.to(fovRef, { current: 48, duration: 0.6, ease: 'power2.inOut' }, '<')
+        tl.to(fovRef, { current: 52, duration: 0.6, ease: 'power2.inOut' })
+
         tl.to(steeringAngleRef, { current: 0, duration: 0.4 })
         tl.to(isDriftingRef, { current: false, duration: 0.3 })
-        tl.to(speedRef, { current: 0, duration: 1 })
+        tl.to(cameraShakeRef, { current: 0, duration: 0.3 }, '<') // Remove shake
 
-        // ===== ETAPA 1 — FRENTE DO CARRO =====
+        // ===== FRENAGEM COM INCLINAÇÃO =====
+        tl.to(speedRef, { current: 0, duration: 1 }, '<')
+
+        // 🚗 EFEITO DE FRENAGEM: frente abaixa suavemente
+        tl.to(carRef.current.rotation, {
+            x: -0.06,
+            duration: 0.7,
+            ease: 'power1.out'
+        }, '<')
+
+        // Suspensão se estabiliza suavemente
+        tl.to(carRef.current.rotation, {
+            x: 0,
+            duration: 0.6,
+            ease: 'power1.inOut'
+        })
+
+        // Pausa dramática após parada
+        tl.to({}, { duration: 0.4 })
+
+        // ===== ETAPA 1 — TRANSIÇÃO PARA FRENTE DO CARRO =====
         tl.call(() => {
             followCameraRef.current = false
             cinematicCarFocusRef.current = true
         })
 
+        // Dolly + Crane shot (movimento ascendente suave)
         tl.to(camera.position, {
             x: 0,
             y: 10,
             z: carRef.current.position.z + 16,
-            duration: 2
+            duration: 2.5,
+            ease: 'power1.inOut'
         })
 
-        // ===== ETAPA 2 — FOCO FINAL NA LUA =====
+        // FOV fecha levemente (aproxima o carro visualmente)
+        tl.to(fovRef, { current: 45, duration: 2.5, ease: 'power1.inOut' }, '<')
+
+        // Pausa cinematográfica
+        tl.to({}, { duration: 0.5 })
+
+        // ===== ETAPA 2 — REVEAL DA LUA =====
         tl.call(() => {
             cinematicCarFocusRef.current = false
             moonFocusRef.current = true
             setShowMoon(true)
         })
 
-        // 📸 CÂMERA BAIXA, OLHANDO PRA CIMA
+        // 📸 Low angle shot + Arc movement
         tl.to(camera.position, {
             x: 10,
             y: 6,
             z: carRef.current.position.z + 40,
-            duration: 2.6,
+            duration: 3.2,
             ease: 'power2.inOut'
+        })
+
+        // FOV abre dramaticamente (wide shot da lua)
+        tl.to(fovRef, {
+            current: 38,
+            duration: 3.2,
+            ease: 'power2.inOut'
+        }, '<')
+
+        // Subtle push in final (zoom lento na lua)
+        tl.to(fovRef, {
+            current: 35,
+            duration: 2,
+            ease: 'power1.in'
         })
 
     }, [camera])

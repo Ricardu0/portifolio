@@ -1,3 +1,4 @@
+// src/components/Scene3D/DriftParticles.jsx
 import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -12,7 +13,7 @@ export default function DriftParticles({ carRef, isActive, steeringAngleRef }) {
         velocities: Array.from({ length: maxParticles }, () => new THREE.Vector3()),
         lifetimes: new Float32Array(maxParticles),
         active: new Array(maxParticles).fill(false),
-        spawnSide: new Array(maxParticles).fill(0) // 0 = esquerda, 1 = direita
+        spawnSide: new Array(maxParticles).fill(0)
     }), [])
 
     useFrame((state, delta) => {
@@ -32,16 +33,12 @@ export default function DriftParticles({ carRef, isActive, steeringAngleRef }) {
                 if (inactiveIndex !== -1) {
                     const i = inactiveIndex
 
-                    // Alterna entre roda esquerda e direita traseira
                     const isLeftWheel = Math.random() > 0.5
                     particleData.spawnSide[i] = isLeftWheel ? 0 : 1
 
-                    // Posição das rodas traseiras no modelo
-                    // Ajuste baseado na geometria: traseira está ~1.2 unidades atrás
-                    const wheelOffsetX = isLeftWheel ? -0.7 : 0.7  // Largura entre rodas
-                    const wheelOffsetZ = -1.2  // Distância até o eixo traseiro
+                    const wheelOffsetX = isLeftWheel ? -0.7 : 0.7
+                    const wheelOffsetZ = -1.2
 
-                    // Rotaciona offset pelo ângulo do carro
                     const rotatedX = wheelOffsetX * Math.cos(carRot) - wheelOffsetZ * Math.sin(carRot)
                     const rotatedZ = wheelOffsetX * Math.sin(carRot) + wheelOffsetZ * Math.cos(carRot)
 
@@ -51,7 +48,6 @@ export default function DriftParticles({ carRef, isActive, steeringAngleRef }) {
                         carPos.z + rotatedZ + (Math.random() - 0.5) * 0.3
                     )
 
-                    // Velocidade inicial (para trás e para os lados)
                     const spreadAngle = carRot + (Math.random() - 0.5) * 0.8
                     particleData.velocities[i].set(
                         Math.sin(spreadAngle) * (0.3 + Math.random() * 0.4),
@@ -75,7 +71,6 @@ export default function DriftParticles({ carRef, isActive, steeringAngleRef }) {
 
         for (let i = 0; i < maxParticles; i++) {
             if (!particleData.active[i]) {
-                // Esconde partículas inativas
                 dummy.position.set(0, -100, 0)
                 dummy.scale.set(0, 0, 0)
                 dummy.updateMatrix()
@@ -95,16 +90,13 @@ export default function DriftParticles({ carRef, isActive, steeringAngleRef }) {
                 continue
             }
 
-            // Recupera matriz atual
             instancedMeshRef.current.getMatrixAt(i, dummy.matrix)
             dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale)
 
-            // Física
             dummy.position.add(particleData.velocities[i].clone().multiplyScalar(delta * 3))
-            particleData.velocities[i].y -= delta * 2.5  // Gravidade
-            particleData.velocities[i].multiplyScalar(0.88)  // Atrito do ar
+            particleData.velocities[i].y -= delta * 2.5
+            particleData.velocities[i].multiplyScalar(0.88)
 
-            // Fade out
             const lifeRatio = particleData.lifetimes[i]
             const targetScale = lifeRatio * 0.35
             dummy.scale.set(targetScale, targetScale, targetScale)
@@ -122,10 +114,11 @@ export default function DriftParticles({ carRef, isActive, steeringAngleRef }) {
     return (
         <instancedMesh ref={instancedMeshRef} args={[null, null, maxParticles]}>
             <sphereGeometry args={[1, 6, 6]} />
+            {/* 🎨 Cor ajustada para harmonizar com o ambiente azul */}
             <meshBasicMaterial
-                color="#5a5a5a"
+                color="#6a6a6a"
                 transparent
-                opacity={0.7}
+                opacity={0.65}
                 depthWrite={false}
             />
         </instancedMesh>

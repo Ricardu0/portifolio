@@ -32,7 +32,7 @@ export default function Moon({ visible = false }) {
 
         const opacity = opacityRef.current
         moonRef.current.material.opacity = opacity
-        glowRef.current.material.opacity = opacity * 0.25
+        glowRef.current.material.opacity = opacity * 0.3
 
         // Respiração suave
         const breathe = Math.sin(state.clock.elapsedTime * 0.5) * 0.03
@@ -41,7 +41,7 @@ export default function Moon({ visible = false }) {
     })
 
     return (
-        // CORRIGIDO: Posição no canto superior DIREITO
+        // Posição no canto superior DIREITO
         <group position={[25, 60, -40]}>
             {/* Brilho externo */}
             <mesh ref={glowRef}>
@@ -56,12 +56,12 @@ export default function Moon({ visible = false }) {
 
             {/* Lua */}
             <mesh ref={moonRef}>
-                <sphereGeometry args={[3.5, 32, 33]} />
+                <sphereGeometry args={[3.5, 32, 32]} />
                 <meshStandardMaterial
                     color="#f5f5dc"
                     emissive="#ffffcc"
-                    emissiveIntensity={0.5}
-                    roughness={0.95}
+                    emissiveIntensity={0.9}
+                    roughness={0.35}
                     metalness={0}
                     transparent
                     opacity={0}
