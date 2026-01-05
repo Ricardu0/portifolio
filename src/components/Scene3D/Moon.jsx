@@ -36,13 +36,13 @@ export default function Moon({ visible = false }) {
 
         // Respiração suave
         const breathe = Math.sin(state.clock.elapsedTime * 0.5) * 0.03
-        moonRef.current.scale.setScalar(1 + breathe)
-        glowRef.current.scale.setScalar(1.4 + breathe * 0.3)
+        moonRef.current.scale.setScalar(1.3 + breathe)
+        glowRef.current.scale.setScalar(0.9 + breathe * 0.3)
     })
 
     return (
         // Posição no canto superior DIREITO
-        <group position={[25, 60, -40]}>
+        <group position={[25, 60, -105]}>
             {/* Brilho externo */}
             <mesh ref={glowRef}>
                 <sphereGeometry args={[5, 32, 32]} />

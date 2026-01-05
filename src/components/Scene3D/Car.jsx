@@ -1,3 +1,4 @@
+// src/components/Scene3D/Car.jsx
 import React, { useEffect, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -19,9 +20,9 @@ export default function Car({ carRef, speedRef, steeringAngleRef }) {
     const rightTargetRef = useRef()
 
     // 🎯 CONFIGURAÇÕES AJUSTÁVEIS
-    const MAX_STEERING_ANGLE = Math.PI / 10 // 30 graus (ajuste aqui: menor = menos giro)
-    const WHEEL_SCALE = 0.99 // 0.95 = 95% do tamanho original (diminui um pouco)
-    const WHEEL_LATERAL_OFFSET = 0.1  // Afasta as rodas da carroceria (aumenta se necessário)
+    const MAX_STEERING_ANGLE = Math.PI / 10
+    const WHEEL_SCALE = 0.99
+    const WHEEL_LATERAL_OFFSET = 0.1
 
     useEffect(() => {
         frontSteeringPivots.current = []
@@ -58,31 +59,38 @@ export default function Car({ carRef, speedRef, steeringAngleRef }) {
         const createDualPivotForFrontWheel = (wheelMesh) => {
             if (!wheelMesh.parent) return null
 
-            // Calcular centro da roda
+            const parent = wheelMesh.parent
+
+            // Calcular centro da roda (MUNDO)
             const box = new THREE.Box3().setFromObject(wheelMesh)
-            const center = new THREE.Vector3()
-            box.getCenter(center)
+            const centerWorld = new THREE.Vector3()
+            box.getCenter(centerWorld)
 
-            const isLeftWheel = center.x < 0
+            // 🔥 FIX: Converter de coordenadas mundiais para locais do pai
+            const centerLocal = parent.worldToLocal(centerWorld.clone())
 
-            // 🔧 Pivot no centro + offset lateral para afastar da carroceria
+            const isLeftWheel = centerLocal.x < 0
+
+            // 🔧 Pivot no centro + offset lateral
             const lateralOffset = isLeftWheel ? -WHEEL_LATERAL_OFFSET : WHEEL_LATERAL_OFFSET
             const pivotPosition = new THREE.Vector3(
-                center.x + lateralOffset,
-                center.y,
-                center.z
+                centerLocal.x + lateralOffset,
+                centerLocal.y,
+                centerLocal.z
             )
 
             // Criar pivot de steering (direção)
             const steeringPivot = new THREE.Object3D()
             steeringPivot.position.copy(pivotPosition)
-            wheelMesh.parent.add(steeringPivot)
+            steeringPivot.rotation.order = 'ZXY' // 🔥 FIX: Ordem explícita
+            parent.add(steeringPivot)
 
             // Criar pivot de rotação (girar a roda)
             const rotationPivot = new THREE.Object3D()
+            rotationPivot.rotation.order = 'ZXY' // 🔥 FIX: Ordem explícita
             steeringPivot.add(rotationPivot)
 
-            // 📏 APLICAR ESCALA NA RODA (diminuir tamanho)
+            // 📏 APLICAR ESCALA NA RODA
             wheelMesh.scale.multiplyScalar(WHEEL_SCALE)
 
             // Calcular offset da roda em relação ao pivot
@@ -96,22 +104,29 @@ export default function Car({ carRef, speedRef, steeringAngleRef }) {
 
         const createSinglePivotForRearWheel = (wheelMesh) => {
             if (!wheelMesh.parent) return null
-            const box = new THREE.Box3().setFromObject(wheelMesh)
-            const center = new THREE.Vector3()
-            box.getCenter(center)
 
-            const isLeftWheel = center.x < 0
+            const parent = wheelMesh.parent
+
+            const box = new THREE.Box3().setFromObject(wheelMesh)
+            const centerWorld = new THREE.Vector3()
+            box.getCenter(centerWorld)
+
+            // 🔥 FIX: Converter de coordenadas mundiais para locais
+            const centerLocal = parent.worldToLocal(centerWorld.clone())
+
+            const isLeftWheel = centerLocal.x < 0
             const wheelWidth = box.max.x - box.min.x
 
             // Pivot para rodas traseiras
-            const pivotX = isLeftWheel ? (center.x + wheelWidth * 0.35) : (center.x - wheelWidth * 0.35)
-            const pivotPosition = new THREE.Vector3(pivotX, center.y, center.z)
+            const pivotX = isLeftWheel ? (centerLocal.x + wheelWidth * 0.35) : (centerLocal.x - wheelWidth * 0.35)
+            const pivotPosition = new THREE.Vector3(pivotX, centerLocal.y, centerLocal.z)
 
             const pivot = new THREE.Object3D()
             pivot.position.copy(pivotPosition)
-            wheelMesh.parent.add(pivot)
+            pivot.rotation.order = 'YXZ' // 🔥 FIX: Ordem explícita
+            parent.add(pivot)
 
-            // 📏 APLICAR ESCALA NA RODA TRASEIRA TAMBÉM
+            // 📏 APLICAR ESCALA
             wheelMesh.scale.multiplyScalar(WHEEL_SCALE)
 
             const offset = wheelMesh.position.clone().sub(pivotPosition)
@@ -133,7 +148,6 @@ export default function Car({ carRef, speedRef, steeringAngleRef }) {
         rearWheels.forEach((wheel) => {
             const pivot = createSinglePivotForRearWheel(wheel)
             if (pivot) {
-                pivot.rotation.order = 'YXZ'
                 rearRotationPivots.current.push(pivot)
             }
         })
@@ -145,7 +159,7 @@ export default function Car({ carRef, speedRef, steeringAngleRef }) {
         const targetSteering = steeringAngleRef?.current || 0
         const rotAmount = speed * delta * 4.0
 
-        // 🚨 LIMITAR O ÂNGULO DE STEERING (IMPORTANTE!)
+        // 🚨 LIMITAR O ÂNGULO DE STEERING
         const clampedSteering = THREE.MathUtils.clamp(
             targetSteering,
             -MAX_STEERING_ANGLE,

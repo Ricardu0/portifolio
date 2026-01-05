@@ -2,6 +2,9 @@ import React, { useRef, useMemo, useEffect, Suspense } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
+import Fireflies from './Fireflies'
+import Fog from './Fog'
+import Lake from './Lake'
 
 /**
  * Environment.jsx - VERSÃO ULTRA OTIMIZADA + VISUAL ESTILO CYBERPUNK
@@ -23,6 +26,7 @@ import * as THREE from 'three'
 export default function Environment() {
     const { scene, camera, gl } = useThree()
     const groundRef = useRef()
+    const lakeRef = useRef() // ✅ REF DOS LAGOS
 
     // 🌌 Background escuro + neblina azulada
     scene.background = new THREE.Color('#000a1a')
@@ -46,7 +50,7 @@ export default function Environment() {
     return (
         <Suspense fallback={null}>
             {/* ✨ ILUMINAÇÃO CINEMATOGRÁFICA AZUL */}
-            <ambientLight intensity={0.45} color="#4a5f8c" />
+            <ambientLight intensity={0.5} color="#4a5f8c" />
 
             <directionalLight
                 position={[60, 80, 50]}
@@ -89,6 +93,23 @@ export default function Environment() {
                 <PixelatedGround />
             </group>
 
+            {/* 🌫️ NEBLINA CONTROLÁVEL */}
+            <Fog
+                color="#9eadb8"
+                initialDensity={0.025}
+                minDensity={0.0008}
+            />
+
+            {/* 💧 LAGO */}
+            <Lake
+                ref={lakeRef}
+                lakeCount={40}
+                minSize={10}
+                maxSize={20}
+                spread={900}
+                visible={true}
+            />
+
             {/* 🌟 ESTRELAS NO CÉU (profundidade) */}
             <Stars />
 
@@ -101,7 +122,10 @@ export default function Environment() {
                 spread={425}
                 floorY={0.01}
                 camera={camera}
+                lakeRef={lakeRef}
             />
+
+            <Fireflies count={1000} spread={400} />
 
             {/* 🌟 POST-PROCESSING COM BLOOM */}
             <EffectComposer>
@@ -120,7 +144,6 @@ export default function Environment() {
    CHÃO MEGA PIXELADO COM MANCHAS
    ====================== */
 function PixelatedGround() {
-    // 🎯 CACHE: Textura criada 1x e reutilizada
     const texture = useMemo(() => {
         const size = 512
         const canvas = document.createElement('canvas')
@@ -128,20 +151,16 @@ function PixelatedGround() {
         canvas.height = size
         const ctx = canvas.getContext('2d')
 
-        // Base escura
         ctx.fillStyle = '#1a2838'
         ctx.fillRect(0, 0, size, size)
 
-        // 🎮 PIXELS PEQUENOS tipo ruído (manchas escuras)
-        const pixelSize = 6 // Bem pequeno para efeito de ruído
+        const pixelSize = 6
         const cols = size / pixelSize
         const rows = size / pixelSize
 
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
-                // 45% de chance de ter uma mancha
                 if (Math.random() < 0.45) {
-                    // Variação de escuridão
                     const darkness = Math.random() * 0.5 + 0.2
                     const r = parseInt('1a', 16) * (1 - darkness)
                     const g = parseInt('28', 16) * (1 - darkness)
@@ -153,7 +172,6 @@ function PixelatedGround() {
             }
         }
 
-        // Adiciona alguns pixels mais claros (detalhes)
         for (let i = 0; i < 200; i++) {
             const x = Math.floor(Math.random() * cols) * pixelSize
             const y = Math.floor(Math.random() * rows) * pixelSize
@@ -170,9 +188,8 @@ function PixelatedGround() {
         const tex = new THREE.CanvasTexture(canvas)
         tex.wrapS = THREE.RepeatWrapping
         tex.wrapT = THREE.RepeatWrapping
-        tex.repeat.set(20, 20) // Muitas repetições = efeito de ruído
+        tex.repeat.set(20, 20)
 
-        // 🎯 OTIMIZAÇÃO: Nearest filter = sem interpolação = visual pixelado
         tex.magFilter = THREE.NearestFilter
         tex.minFilter = THREE.NearestFilter
 
@@ -206,10 +223,9 @@ function Stars() {
         const seeds = new Float32Array(starsCount)
 
         for (let i = 0; i < starsCount; i++) {
-            // Distribuir em uma esfera ao redor da cena
             const radius = 380 + Math.random() * 220
             const theta = Math.random() * Math.PI * 2
-            const phi = Math.acos(Math.random() * 0.7 - 0.15) // Mais estrelas acima
+            const phi = Math.acos(Math.random() * 0.7 - 0.15)
 
             pos[i * 3] = radius * Math.sin(phi) * Math.cos(theta)
             pos[i * 3 + 1] = radius * Math.cos(phi)
@@ -230,7 +246,6 @@ function Stars() {
         return geo
     }, [positions, sizes, twinkleSeeds])
 
-    // Material com shader customizado para piscar
     const material = useMemo(() => {
         return new THREE.ShaderMaterial({
             uniforms: {
@@ -244,7 +259,6 @@ function Stars() {
                 uniform float time;
                 
                 void main() {
-                    // Piscar baseado no seed único de cada estrela
                     float twinkle = sin(time * 2.0 + seed * 10.0) * 0.5 + 0.5;
                     vOpacity = 0.3 + twinkle * 0.7;
                     
@@ -258,7 +272,6 @@ function Stars() {
                 varying float vOpacity;
                 
                 void main() {
-                    // Forma circular suave
                     vec2 center = gl_PointCoord - vec2(0.5);
                     float dist = length(center);
                     if (dist > 0.5) discard;
@@ -275,9 +288,7 @@ function Stars() {
 
     useFrame((state) => {
         if (!meshRef.current) return
-        // Atualiza tempo para piscar
         material.uniforms.time.value = state.clock.elapsedTime
-        // Rotação sutil das estrelas
         meshRef.current.rotation.y = state.clock.elapsedTime * 0.008
     })
 
@@ -304,20 +315,16 @@ function SkyGradient() {
             fragmentShader: `
                 varying vec3 vWorldPosition;
                 void main() {
-                    // Gradiente baseado na altura (normalizado)
                     float h = normalize(vWorldPosition).y;
                     
-                    // Cores do gradiente (azul escuro → azul médio → azul claro com toque roxo)
-                    vec3 bottomColor = vec3(0.00001, 0.0005, 0.0003); // #0a1428 (azul muito escuro)
-                    vec3 middleColor = vec3(0.0001, 0.00002, 0.0008);   // Azul médio
-                    vec3 topColor = vec3(0.005, 0.005, 0.02);     // Azul mais claro com toque roxo
+                    vec3 bottomColor = vec3(0.00001, 0.0005, 0.0003);
+                    vec3 middleColor = vec3(0.0001, 0.00002, 0.0008);
+                    vec3 topColor = vec3(0.005, 0.005, 0.02);
                     
                     vec3 skyColor;
                     if (h < 0.0) {
-                        // Abaixo do horizonte - transição suave
                         skyColor = mix(bottomColor, middleColor, (h + 1.0));
                     } else {
-                        // Acima do horizonte - gradiente mais sutil
                         skyColor = mix(middleColor, topColor, pow(h, 0.8));
                     }
                     
@@ -336,9 +343,9 @@ function SkyGradient() {
 }
 
 /* ======================
-   LeavesField - Sistema de física das folhas
+   LeavesField - Sistema de física das folhas COM INTERAÇÃO COM LAGOS
    ====================== */
-function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
+function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeRef }) {
     const meshRef = useRef()
     const vehicleRef = useRef({
         x: 0,
@@ -361,7 +368,6 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
     const dummy = useRef(new THREE.Object3D())
     const tmpColor = useRef(new THREE.Color())
 
-    // Geometria plana compartilhada
     const planeGeo = useMemo(() => {
         const g = new THREE.BufferGeometry()
         const vertices = new Float32Array([
@@ -382,14 +388,14 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
 
     const mat = useMemo(() => {
         return new THREE.MeshStandardMaterial({
-            color: '#7fd68a',
+            color: 'rgba(245,255,146,0.11)',
             roughness: 0.4,
             metalness: 0.1,
             side: THREE.DoubleSide,
             transparent: true,
             vertexColors: true,
             opacity: 0.65,
-            emissive: '#4ade80',
+            emissive: 'rgb(255,243,180)',
             emissiveIntensity: 1.2,
             alphaTest: 0.1,
         })
@@ -404,10 +410,36 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
         const sparklePhases = new Float32Array(count)
         const rotationSpeeds = new Float32Array(count * 3)
 
+        // ✅ OBTER POSIÇÕES DOS LAGOS
+        const lakesData = lakeRef.current?.getLakesData() || []
+
         for (let i = 0; i < count; i++) {
-            pos[i * 3] = (Math.random() - 0.5) * spread
-            pos[i * 3 + 1] = floorY
-            pos[i * 3 + 2] = (Math.random() - 0.5) * spread
+            let x, z
+            let validPosition = false
+            let attempts = 0
+
+            // ✅ EVITAR SPAWNAR FOLHAS PRÓXIMAS AOS LAGOS
+            while (!validPosition && attempts < 10) {
+                x = (Math.random() - 0.5) * spread
+                z = (Math.random() - 0.5) * spread
+
+                validPosition = true
+                for (const lake of lakesData) {
+                    const distToLake = Math.sqrt((x - lake.x) ** 2 + (z - lake.z) ** 2)
+                    if (distToLake < lake.size * 0.7) {
+                        validPosition = false
+                        break
+                    }
+                }
+                attempts++
+            }
+
+            pos[i * 3] = x
+            pos[i * 3 + 1] = Math.random() < 0.01 ?
+                floorY + Math.random() * 7.5 :  // 15% das folhas começam até 2.5u acima
+                floorY
+
+            pos[i * 3 + 2] = z
 
             vel[i * 3] = (Math.random() - 0.5) * 0.005
             vel[i * 3 + 1] = 0
@@ -478,7 +510,7 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
             mesh.instanceMatrix.needsUpdate = true
             if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
         }
-    }, [count, spread, floorY])
+    }, [count, spread, floorY, lakeRef])
 
     useFrame((state, delta) => {
         if (!meshRef.current || !positionsRef.current) return
@@ -503,7 +535,7 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
         vehicle.vz = (vehicle.z - prevZ) / Math.max(delta, 0.001)
         vehicle.speed = Math.sqrt(vehicle.vx * vehicle.vx + vehicle.vz * vehicle.vz)
 
-        const windBase = 0.03
+        const windBase = 1
         const windTurb = 0.08
         const gravity = -1.62
         const damping = 0.05
@@ -744,6 +776,17 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
 
             const headlightBoost = Math.pow(headlightInfluence, 0.6) * 6.0
 
+            // ========== ✅ BRILHO DAS FOLHAS PRÓXIMAS AOS LAGOS ==========
+            const lakesData = lakeRef.current?.getLakesData() || []
+            let nearestLakeDist = Infinity
+            for (const lake of lakesData) {
+                const distToLake = Math.sqrt((x - lake.x) ** 2 + (z - lake.z) ** 2)
+                nearestLakeDist = Math.min(nearestLakeDist, distToLake - lake.size * 0.5)
+            }
+
+            const lakeProximity = Math.max(0, 1 - nearestLakeDist / 15)
+            const lakeGlow = Math.pow(lakeProximity, 2) * 2.5
+
             if (isAirborne) {
                 const sparkleFreq = 7 + seed * 0.01
                 const sparkleWave = Math.sin(t * sparkleFreq + sparklePhases[i])
@@ -753,28 +796,30 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera }) {
 
                 const megaFlash = Math.random() < 0.03 ? 1.2 : 0
 
-                const totalBrightness = heightBoost * sparkleIntensity + megaFlash + headlightBoost
+                const totalBrightness = heightBoost * sparkleIntensity + megaFlash + headlightBoost + lakeGlow
 
                 const colorPulse = Math.sin(t * 4 + seed * 0.1) * 0.5 + 0.5
                 const hueShift = colorPulse * 0.2
 
                 const yellowTint = headlightInfluence * 0.6
+                const waterTint = lakeProximity * 0.4
 
                 tmpColor.current.setRGB(
-                    Math.min(1, cols[i * 3] * totalBrightness + sparkleIntensity * 0.4 + hueShift * 0.3 + yellowTint),
-                    Math.min(1, cols[i * 3 + 1] * totalBrightness + sparkleIntensity * 0.6 + hueShift * 0.4 + yellowTint * 0.8),
-                    Math.min(1, cols[i * 3 + 2] * totalBrightness + sparkleIntensity * 0.3 + yellowTint * 0.3)
+                    Math.min(1, cols[i * 3] * totalBrightness + sparkleIntensity * 0.4 + hueShift * 0.3 + yellowTint + waterTint * 0.3),
+                    Math.min(1, cols[i * 3 + 1] * totalBrightness + sparkleIntensity * 0.6 + hueShift * 0.4 + yellowTint * 0.8 + waterTint * 0.6),
+                    Math.min(1, cols[i * 3 + 2] * totalBrightness + sparkleIntensity * 0.3 + yellowTint * 0.3 + waterTint * 0.9)
                 )
             } else {
                 const groundPulse = Math.sin(t * 2.5 + seed * 0.05) * 0.3 + 1.0
-                const totalGroundBrightness = groundPulse + headlightBoost
+                const totalGroundBrightness = groundPulse + headlightBoost + lakeGlow
 
                 const yellowTint = headlightInfluence * 0.8
+                const waterTint = lakeProximity * 0.5
 
                 tmpColor.current.setRGB(
-                    Math.min(1, cols[i * 3] * totalGroundBrightness + yellowTint),
-                    Math.min(1, cols[i * 3 + 1] * totalGroundBrightness + yellowTint * 0.9),
-                    Math.min(1, cols[i * 3 + 2] * totalGroundBrightness + yellowTint * 0.4)
+                    Math.min(1, cols[i * 3] * totalGroundBrightness + yellowTint + waterTint * 0.3),
+                    Math.min(1, cols[i * 3 + 1] * totalGroundBrightness + yellowTint * 0.9 + waterTint * 0.7),
+                    Math.min(1, cols[i * 3 + 2] * totalGroundBrightness + yellowTint * 0.4 + waterTint)
                 )
             }
 
