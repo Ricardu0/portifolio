@@ -3,42 +3,93 @@ import React, { useRef, useMemo, useEffect, useImperativeHandle, forwardRef } fr
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
+// 🎯 POSIÇÕES FIXAS PRÉ-DEFINIDAS (calculadas uma única vez)
+const PREDEFINED_LAKES = [
+    // Padrão alternado ao longo da estrada (lado esquerdo e direito)
+    { x: -10.2, z: -9.8, size: 4.5, scaleX: 1.3, scaleZ: 1.2, rotation: 0.8, seed: 12.5, shapeComplexity: 7.2 },
+    { x: 9.5, z: -9.2, size: 6.2, scaleX: 1.1, scaleZ: 1.4, rotation: 2.1, seed: 8.3, shapeComplexity: 9.1 },
+    { x: -11.8, z: -8.5, size: 3.8, scaleX: 1.4, scaleZ: 1.1, rotation: 1.5, seed: 22.7, shapeComplexity: 6.5 },
+    { x: 10.3, z: -7.8, size: 5.5, scaleX: 1.2, scaleZ: 1.3, rotation: 0.3, seed: 35.4, shapeComplexity: 8.8 },
+    { x: -9.8, z: -7.1, size: 7.1, scaleX: 1.5, scaleZ: 1.2, rotation: 2.8, seed: 15.9, shapeComplexity: 10.3 },
+
+    { x: 11.2, z: -6.4, size: 4.2, scaleX: 1.1, scaleZ: 1.5, rotation: 1.2, seed: 28.1, shapeComplexity: 7.8 },
+    { x: -10.5, z: -5.7, size: 6.8, scaleX: 1.3, scaleZ: 1.1, rotation: 0.6, seed: 41.2, shapeComplexity: 9.5 },
+    { x: 9.1, z: -5.0, size: 3.5, scaleX: 1.4, scaleZ: 1.3, rotation: 2.3, seed: 19.6, shapeComplexity: 6.2 },
+    { x: -11.5, z: -4.3, size: 5.9, scaleX: 1.2, scaleZ: 1.4, rotation: 1.7, seed: 33.8, shapeComplexity: 8.4 },
+    { x: 10.8, z: -3.6, size: 4.7, scaleX: 1.5, scaleZ: 1.1, rotation: 0.9, seed: 26.5, shapeComplexity: 7.1 },
+
+    { x: -9.3, z: -2.9, size: 6.5, scaleX: 1.1, scaleZ: 1.2, rotation: 2.5, seed: 14.3, shapeComplexity: 9.8 },
+    { x: 11.7, z: -2.2, size: 3.9, scaleX: 1.3, scaleZ: 1.5, rotation: 1.1, seed: 38.9, shapeComplexity: 6.9 },
+    { x: -10.1, z: -1.5, size: 7.3, scaleX: 1.4, scaleZ: 1.1, rotation: 0.4, seed: 21.7, shapeComplexity: 10.6 },
+    { x: 9.6, z: -0.8, size: 5.2, scaleX: 1.2, scaleZ: 1.3, rotation: 2.9, seed: 47.2, shapeComplexity: 8.1 },
+    { x: -11.3, z: -0.1, size: 4.1, scaleX: 1.5, scaleZ: 1.4, rotation: 1.4, seed: 11.8, shapeComplexity: 7.5 },
+
+    { x: 10.6, z: 0.6, size: 6.9, scaleX: 1.1, scaleZ: 1.2, rotation: 0.7, seed: 29.4, shapeComplexity: 9.2 },
+    { x: -9.9, z: 1.3, size: 3.7, scaleX: 1.3, scaleZ: 1.5, rotation: 2.2, seed: 16.1, shapeComplexity: 6.8 },
+    { x: 11.4, z: 2.0, size: 5.6, scaleX: 1.4, scaleZ: 1.1, rotation: 1.6, seed: 43.5, shapeComplexity: 8.6 },
+    { x: -10.7, z: 2.7, size: 7.5, scaleX: 1.2, scaleZ: 1.3, rotation: 0.2, seed: 24.9, shapeComplexity: 10.1 },
+    { x: 9.4, z: 3.4, size: 4.4, scaleX: 1.5, scaleZ: 1.4, rotation: 2.7, seed: 37.6, shapeComplexity: 7.3 },
+
+    { x: -11.1, z: 4.1, size: 6.1, scaleX: 1.1, scaleZ: 1.2, rotation: 1.3, seed: 13.2, shapeComplexity: 9.4 },
+    { x: 10.9, z: 4.8, size: 3.6, scaleX: 1.3, scaleZ: 1.5, rotation: 0.5, seed: 31.7, shapeComplexity: 6.6 },
+    { x: -9.7, z: 5.5, size: 5.8, scaleX: 1.4, scaleZ: 1.1, rotation: 2.4, seed: 18.4, shapeComplexity: 8.9 },
+    { x: 11.6, z: 6.2, size: 7.2, scaleX: 1.2, scaleZ: 1.3, rotation: 1.8, seed: 45.1, shapeComplexity: 10.5 },
+    { x: -10.4, z: 6.9, size: 4.8, scaleX: 1.5, scaleZ: 1.4, rotation: 0.1, seed: 27.8, shapeComplexity: 7.6 },
+
+    // Continue o padrão até atingir 125 lagos...
+    // Para brevidade, mostro apenas 25. Adicione mais seguindo o padrão alternado
+]
+
+// Função auxiliar para gerar os lagos restantes (se necessário)
+const generateFixedLakes = (count) => {
+    if (PREDEFINED_LAKES.length >= count) {
+        return PREDEFINED_LAKES.slice(0, count)
+    }
+
+    // Gera lakes adicionais com padrão determinístico
+    const lakes = [...PREDEFINED_LAKES]
+    const baseValues = [
+        { size: 3.5, scaleX: 1.1, scaleZ: 1.2, rotation: 0.3, shapeComplexity: 6.5 },
+        { size: 4.8, scaleX: 1.3, scaleZ: 1.4, rotation: 1.5, shapeComplexity: 8.2 },
+        { size: 6.2, scaleX: 1.4, scaleZ: 1.1, rotation: 2.1, shapeComplexity: 9.8 },
+        { size: 5.5, scaleX: 1.2, scaleZ: 1.5, rotation: 0.8, shapeComplexity: 7.4 },
+        { size: 7.1, scaleX: 1.5, scaleZ: 1.3, rotation: 2.7, shapeComplexity: 10.2 }
+    ]
+
+    for (let i = PREDEFINED_LAKES.length; i < count; i++) {
+        const pattern = baseValues[i % baseValues.length]
+        const side = (i % 2 === 0) ? 1 : -1
+        const zPos = (i / count) * 20 - 10 // Distribui de -10 a +10
+
+        lakes.push({
+            x: side * (9.5 + (i % 3) * 0.8),
+            z: zPos,
+            size: pattern.size,
+            scaleX: pattern.scaleX,
+            scaleZ: pattern.scaleZ,
+            rotation: pattern.rotation,
+            seed: (i * 3.7) % 50, // Padrão determinístico
+            shapeComplexity: pattern.shapeComplexity
+        })
+    }
+
+    return lakes.slice(0, count)
+}
+
 const Lake = forwardRef(({
                              lakeCount = 125,
-                             minSize = 3,
-                             maxSize = 8,
                              visible = true,
-                             floorY = 0.02, // Levemente acima do chão para evitar z-fighting
-                             reflectivity = 0.95, // Poças são quase espelhos
-                             spread = 20
+                             floorY = 0.02,
+                             reflectivity = 0.95,
+                             spread = 20 // Mantido para compatibilidade, mas não usado
                          }, ref) => {
     const groupRef = useRef()
     const { camera } = useThree()
 
+    // ✅ ZERO cálculos aleatórios - apenas seleciona do array pré-definido
     const lakesData = useMemo(() => {
-        const data = []
-        const pathLength = spread
-        const pathWidth = spread * 0.15
-
-        for (let i = 0; i < lakeCount; i++) {
-            const z = (i / lakeCount) * pathLength - pathLength / 2
-            const side = Math.random() > 0.5 ? 1 : -1
-            const xOffset = Math.pow(Math.random(), 1.6) * pathWidth / 2
-            const x = side * (8 + xOffset)
-
-            // Poças costumam ser mais achatadas/alongadas
-            const size = minSize + Math.random() * (maxSize - minSize)
-            const scaleX = 1 + Math.random() * 0.5
-            const scaleZ = 1 + Math.random() * 0.5
-
-            const rotation = Math.random() * Math.PI * 2
-            const seed = Math.random() * 50
-            const shapeComplexity = Math.random() * 10 + 5
-
-            data.push({ x, z, size, scaleX, scaleZ, rotation, seed, shapeComplexity })
-        }
-        return data
-    }, [lakeCount, minSize, maxSize, spread])
+        return generateFixedLakes(lakeCount)
+    }, [lakeCount])
 
     useImperativeHandle(ref, () => ({
         getLakesData: () => lakesData
@@ -66,7 +117,7 @@ const Lake = forwardRef(({
         groupRef.current.traverse((c) => {
             if (c.isMesh) {
                 c.renderOrder = -45
-                c.frustumCulled = false
+                c.frustumCulled = true
             }
         })
     }, [])
@@ -80,7 +131,7 @@ const Lake = forwardRef(({
                     key={i}
                     position={[lake.x, floorY, lake.z]}
                     rotation={[-Math.PI / 2, 0, lake.rotation]}
-                    scale={[lake.scaleX, lake.scaleZ, 1]} // Escala não uniforme para forma orgânica
+                    scale={[lake.scaleX, lake.scaleZ, 1]}
                     receiveShadow
                 >
                     <planeGeometry args={[lake.size, lake.size, 64, 64]} />
@@ -96,12 +147,10 @@ const Lake = forwardRef(({
                             shapeComplexity: { value: lake.shapeComplexity },
                             reflectivity: { value: reflectivity },
 
-                            // 🎨 CORES DE POÇA (Asfalto molhado/Barro escuro)
-                            waterColorDeep: { value: new THREE.Color('#050505') }, // Quase preto (asfalto fundo)
-                            waterColorShallow: { value: new THREE.Color('#151618') }, // Cinza escuro
-                            groundColor: { value: new THREE.Color('#1a1c1e') }, // Chão seco ao redor
+                            waterColorDeep: { value: new THREE.Color('#050505') },
+                            waterColorShallow: { value: new THREE.Color('#151618') },
+                            groundColor: { value: new THREE.Color('#1a1c1e') },
 
-                            // Reflexos noturnos
                             skyColorDark: { value: new THREE.Color('#1a2530') },
                             skyColorBright: { value: new THREE.Color('#354a60') },
 
@@ -137,10 +186,8 @@ const Lake = forwardRef(({
                             uniform float time;
                             uniform float seed;
 
-                            // 💧 MICRO ONDULAÇÕES (Vento na superfície fina)
                             float windRipple(vec2 p) {
                                 float t = time * 0.8;
-                                // Ondas muito pequenas e rápidas
                                 return sin(p.x * 15.0 + t + seed) * cos(p.y * 12.0 - t * 0.5) * 0.002 +
                                        sin(p.x * 25.0 - t * 1.5) * 0.001;
                             }
@@ -149,11 +196,8 @@ const Lake = forwardRef(({
                                 vUv = uv;
                                 vec3 pos = position;
                                 
-                                // Poça é plana! Removemos as ondas grandes.
-                                // Apenas micro vibrações
                                 pos.y += windRipple(pos.xz);
 
-                                // Normais para superfície quase plana
                                 float delta = 0.01;
                                 float h = windRipple(pos.xz);
                                 float hx = windRipple(pos.xz + vec2(delta, 0.0));
@@ -167,7 +211,6 @@ const Lake = forwardRef(({
                                 vWorldPos = worldPos.xyz;
                                 vViewDir = normalize(cameraPosition - vWorldPos);
                                 
-                                // Profundidade baseada no centro da geometria
                                 vec2 centered = uv - 0.5;
                                 vDepth = 1.0 - smoothstep(0.0, 0.5, length(centered));
 
@@ -191,7 +234,6 @@ const Lake = forwardRef(({
                             uniform float shapeComplexity;
                             uniform float time;
                             
-                            // Luzes
                             uniform vec3 sunDirection;
                             uniform vec3 sunColor;
                             uniform float sunIntensity;
@@ -208,7 +250,6 @@ const Lake = forwardRef(({
                             uniform vec3 leafColor;
                             uniform vec3 leafEmissive;
 
-                            // Noise functions
                             float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
                             
                             float noise(vec2 p) {
@@ -231,7 +272,6 @@ const Lake = forwardRef(({
                                 return value;
                             }
 
-                            // PBR Helpers
                             float DistributionGGX(vec3 N, vec3 H, float roughness) {
                                 float a = roughness * roughness;
                                 float a2 = a * a;
@@ -261,44 +301,32 @@ const Lake = forwardRef(({
                                 vec3 V = normalize(vViewDir);
                                 float NdotV = max(dot(N, V), 0.0);
 
-                                // 💦 FÍSICA DE POÇA
-                                // Poças são muito lisas (low roughness)
                                 float roughness = 0.02; 
-                                vec3 F0 = vec3(0.02); // Refletividade da água
+                                vec3 F0 = vec3(0.02);
 
-                                // Forma Orgânica da Poça (Fractal)
                                 vec2 uv = vUv - 0.5;
-                                // Distorção forte para parecer líquido escorrido
                                 float distort = fbm(uv * 4.0 + shapeComplexity * 0.1, 4);
                                 vec2 warpedUV = uv + (distort - 0.5) * 0.15;
                                 float dist = length(warpedUV);
                                 
-                                // Borda irregular
                                 float edgeNoise = fbm(warpedUV * 8.0 + shapeComplexity * 0.2, 5);
                                 float shapeMask = smoothstep(0.45 + edgeNoise * 0.1, 0.38 + edgeNoise * 0.1, dist);
                                 
-                                if (shapeMask < 0.01) discard; // Otimização
+                                if (shapeMask < 0.01) discard;
 
-                                // Cor Base (Escura e "Suja")
-                                // Mistura asfalto molhado com um pouco de profundidade
                                 vec3 albedo = mix(waterColorShallow, waterColorDeep, vDepth);
                                 
-                                // Reflexo do Céu (Skybox fake)
                                 vec3 R = reflect(-V, N);
                                 float skyMix = smoothstep(-0.1, 0.4, R.y);
                                 vec3 skyRefl = mix(skyColorDark, skyColorBright, skyMix);
                                 
                                 vec3 F = fresnelSchlick(NdotV, F0);
                                 
-                                // Combina cor base + céu
                                 vec3 color = mix(albedo, skyRefl, F.x * reflectivity);
 
-                                // Acumulador de Bloom
                                 vec3 bloom = vec3(0.0);
 
-                                // ILUMINAÇÃO (PBR Simplificado para performance + Visual)
-                                
-                                // 1. SOL
+                                // SOL
                                 vec3 L_sun = sunDirection;
                                 vec3 H_sun = normalize(L_sun + V);
                                 float NdotL_sun = max(dot(N, L_sun), 0.0);
@@ -309,20 +337,19 @@ const Lake = forwardRef(({
                                 color += sunLight;
                                 bloom += sunLight * 2.0;
 
-                                // 2. FARÓIS (O mais importante para poças na estrada)
-                                // Farol Esquerdo
+                                // FAROL ESQUERDO
                                 vec3 toL = headlightLeft - vWorldPos;
                                 float dL = length(toL);
                                 vec3 LL = normalize(toL);
-                                float attL = 1.0 / (1.0 + 0.1 * dL + 0.03 * dL * dL); // Decaimento rápido
+                                float attL = 1.0 / (1.0 + 0.1 * dL + 0.03 * dL * dL);
                                 vec3 HL = normalize(LL + V);
                                 float NdotLL = max(dot(N, LL), 0.0);
                                 float NDF_L = DistributionGGX(N, HL, roughness);
-                                vec3 specL = (NDF_L * F) * attL * headlightIntensity * 8.0; // Brilho intenso
+                                vec3 specL = (NDF_L * F) * attL * headlightIntensity * 8.0;
                                 color += headlightColor * specL * NdotLL;
-                                bloom += headlightColor * specL * NdotLL * 3.0; // Muito bloom
+                                bloom += headlightColor * specL * NdotLL * 3.0;
 
-                                // Farol Direito
+                                // FAROL DIREITO
                                 vec3 toR = headlightRight - vWorldPos;
                                 float dR = length(toR);
                                 vec3 LR = normalize(toR);
@@ -334,23 +361,19 @@ const Lake = forwardRef(({
                                 color += headlightColor * specR * NdotLR;
                                 bloom += headlightColor * specR * NdotLR * 3.0;
 
-                                // 3. REFLEXÃO DE FOLHAS (Estático fake)
+                                // REFLEXÃO DE FOLHAS
                                 float leafNoise = noise(vUv * 40.0);
-                                float leafMask = step(0.92, leafNoise); // Apenas alguns pontos
+                                float leafMask = step(0.92, leafNoise);
                                 vec3 leafRefl = leafEmissive * leafMask * (attL + attR + 0.1) * 2.0;
                                 color += leafRefl;
                                 bloom += leafRefl;
 
-                                // 4. Bordas Molhadas (Wet edges)
-                                // Escurece a borda onde a poça encontra o chão seco
+                                // BORDAS MOLHADAS
                                 float wetRim = smoothstep(0.0, 0.2, 1.0 - shapeMask);
                                 color = mix(color, groundColor * 0.5, wetRim * 0.6);
 
-                                // Aplica Bloom
                                 color += bloom;
 
-                                // Opacidade
-                                // Poças são mais opacas no centro (profundas) e transparentes na borda
                                 float alpha = shapeMask * mix(0.7, 0.95, F.x);
 
                                 gl_FragColor = vec4(color, alpha);
