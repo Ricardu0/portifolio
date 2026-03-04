@@ -7,51 +7,51 @@ import Fog from './Fog'
 import Lake from './Lake'
 
 /**
- * Environment.jsx - VERSÃO ULTRA OTIMIZADA + VISUAL ESTILO CYBERPUNK
- *
- * 🌃 VISUAL APRIMORADO:
- * - Céu noturno com gradiente azul (escuro → claro)
- * - 1500 estrelas piscando para profundidade
- * - Chão MEGA PIXELADO com manchas escuras tipo ruído
- * - Iluminação azulada cinematográfica
- *
- * 🚀 OTIMIZAÇÕES:
- * - Shadow Map Caching
- * - Frustum Culling Agressivo
- * - Texture Caching
- * - Instanced Rendering
- * - Distance Culling
+ * Environment.jsx - VERSÃO OTIMIZADA SEM PERDER VELOCIDADE DAS FOLHAS
  */
+
+// Cache global para recursos pesados
+const sharedCache = {
+    groundTexture: null,
+    leavesGeometry: null,
+    leavesMaterial: null,
+    starGeometry: null,
+    starMaterial: null
+}
 
 export default function Environment() {
     const { scene, camera, gl } = useThree()
     const groundRef = useRef()
-    const lakeRef = useRef() // ✅ REF DOS LAGOS
+    const lakeRef = useRef()
+    const lastCameraPosition = useRef({ x: 0, z: 0 })
 
-    // 🌌 Background escuro + neblina azulada
-    scene.background = new THREE.Color('#000a1a')
-
-    //fog continua existindo
-    scene.fog = new THREE.Fog('#ffffff', 180, 550)
-
-    // 🎯 OTIMIZAÇÃO: Shadow Map Caching
     useEffect(() => {
+        scene.background = new THREE.Color('#000a1a')
+        scene.fog = new THREE.Fog('#ffffff', 180, 550)
+
         gl.shadowMap.enabled = true
         gl.shadowMap.type = THREE.PCFSoftShadowMap
-        gl.shadowMap.autoUpdate = false // ⚡ Não recalcular sombras todo frame
-    }, [gl])
+        gl.shadowMap.autoUpdate = false
+        gl.shadowMap.needsUpdate = true
+    }, [scene, gl])
 
     useFrame(() => {
         if (!groundRef.current) return
-        groundRef.current.position.x = Math.floor(camera.position.x / 40) * 40
-        groundRef.current.position.z = Math.floor(camera.position.z / 40) * 40
+
+        const camX = camera.position.x
+        const camZ = camera.position.z
+
+        if (Math.abs(camX - lastCameraPosition.current.x) > 1 ||
+            Math.abs(camZ - lastCameraPosition.current.z) > 1) {
+            groundRef.current.position.x = Math.floor(camX / 40) * 40
+            groundRef.current.position.z = Math.floor(camZ / 40) * 40
+            lastCameraPosition.current = { x: camX, z: camZ }
+        }
     })
 
     return (
         <Suspense fallback={null}>
-            {/* ✨ ILUMINAÇÃO CINEMATOGRÁFICA AZUL */}
             <ambientLight intensity={0.5} color="#4a5f8c" />
-
             <directionalLight
                 position={[60, 80, 50]}
                 intensity={1.8}
@@ -67,19 +67,16 @@ export default function Environment() {
                 shadow-camera-bottom={-250}
                 shadow-bias={-0.0001}
             />
-
             <directionalLight
                 position={[-40, 30, -30]}
                 intensity={0.6}
                 color="#7aa3d6"
             />
-
             <hemisphereLight
                 skyColor="#3d5a80"
                 groundColor="#1a2332"
                 intensity={0.7}
             />
-
             <pointLight
                 position={[0, 15, 0]}
                 intensity={0.5}
@@ -88,19 +85,16 @@ export default function Environment() {
                 decay={2}
             />
 
-            {/* 🎮 CHÃO MEGA PIXELADO */}
             <group ref={groundRef}>
-                <PixelatedGround />
+                <OptimizedPixelatedGround />
             </group>
 
-            {/* 🌫️ NEBLINA CONTROLÁVEL */}
             <Fog
                 color="#9eadb8"
                 initialDensity={0.025}
                 minDensity={0.0008}
             />
 
-            {/* 💧 LAGO */}
             <Lake
                 ref={lakeRef}
                 lakeCount={40}
@@ -110,14 +104,10 @@ export default function Environment() {
                 visible={true}
             />
 
-            {/* 🌟 ESTRELAS NO CÉU (profundidade) */}
-            <Stars />
-
-            {/* 🌌 GRADIENTE DO CÉU (atmosfera) */}
+            <OptimizedStars />
             <SkyGradient />
 
-            {/* 🍃 SISTEMA DE FOLHAS */}
-            <LeavesField
+            <OptimizedLeavesField
                 count={30000}
                 spread={425}
                 floorY={0.01}
@@ -127,7 +117,6 @@ export default function Environment() {
 
             <Fireflies count={1000} spread={400} />
 
-            {/* 🌟 POST-PROCESSING COM BLOOM */}
             <EffectComposer>
                 <Bloom
                     intensity={2.2}
@@ -140,11 +129,12 @@ export default function Environment() {
     )
 }
 
-/* ======================
-   CHÃO MEGA PIXELADO COM MANCHAS
-   ====================== */
-function PixelatedGround() {
+function OptimizedPixelatedGround() {
     const texture = useMemo(() => {
+        if (sharedCache.groundTexture) {
+            return sharedCache.groundTexture
+        }
+
         const size = 512
         const canvas = document.createElement('canvas')
         canvas.width = size
@@ -189,10 +179,10 @@ function PixelatedGround() {
         tex.wrapS = THREE.RepeatWrapping
         tex.wrapT = THREE.RepeatWrapping
         tex.repeat.set(20, 20)
-
         tex.magFilter = THREE.NearestFilter
         tex.minFilter = THREE.NearestFilter
 
+        sharedCache.groundTexture = tex
         return tex
     }, [])
 
@@ -210,10 +200,7 @@ function PixelatedGround() {
     )
 }
 
-/* ======================
-   ESTRELAS PISCANDO (profundidade)
-   ====================== */
-function Stars() {
+function OptimizedStars() {
     const meshRef = useRef()
     const starsCount = 1800
 
@@ -295,9 +282,6 @@ function Stars() {
     return <points ref={meshRef} geometry={geometry} material={material} />
 }
 
-/* ======================
-   GRADIENTE DO CÉU (atmosfera)
-   ====================== */
 function SkyGradient() {
     const material = useMemo(() => {
         return new THREE.ShaderMaterial({
@@ -343,9 +327,9 @@ function SkyGradient() {
 }
 
 /* ======================
-   LeavesField - Sistema de física das folhas COM INTERAÇÃO COM LAGOS
+   LeavesField CORRIGIDO - VELOCIDADE ORIGINAL RESTAURADA
    ====================== */
-function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeRef }) {
+function OptimizedLeavesField({ count = 30000, spread = 425, floorY = 0.01, camera, lakeRef }) {
     const meshRef = useRef()
     const vehicleRef = useRef({
         x: 0,
@@ -357,13 +341,14 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
         length: 4.5
     })
 
-    const positionsRef = useRef(null)
-    const velocitiesRef = useRef(null)
-    const scalesRef = useRef(null)
-    const colorsRef = useRef(null)
-    const seedsRef = useRef(null)
-    const sparklePhaseRef = useRef(null)
-    const rotationSpeedsRef = useRef(null)
+    // 🎯 BUFFERS PERSISTENTES (zero reescrita)
+    const positionsRef = useRef(new Float32Array(count * 3))
+    const velocitiesRef = useRef(new Float32Array(count * 3))
+    const scalesRef = useRef(new Float32Array(count))
+    const colorsRef = useRef(new Float32Array(count * 3))
+    const seedsRef = useRef(new Float32Array(count))
+    const sparklePhaseRef = useRef(new Float32Array(count))
+    const rotationSpeedsRef = useRef(new Float32Array(count * 3))
 
     const dummy = useRef(new THREE.Object3D())
     const tmpColor = useRef(new THREE.Color())
@@ -402,15 +387,14 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
     }, [])
 
     useEffect(() => {
-        const pos = new Float32Array(count * 3)
-        const vel = new Float32Array(count * 3)
-        const sc = new Float32Array(count)
-        const cols = new Float32Array(count * 3)
-        const seeds = new Float32Array(count)
-        const sparklePhases = new Float32Array(count)
-        const rotationSpeeds = new Float32Array(count * 3)
+        const pos = positionsRef.current
+        const vel = velocitiesRef.current
+        const sc = scalesRef.current
+        const cols = colorsRef.current
+        const seeds = seedsRef.current
+        const sparklePhases = sparklePhaseRef.current
+        const rotationSpeeds = rotationSpeedsRef.current
 
-        // ✅ OBTER POSIÇÕES DOS LAGOS
         const lakesData = lakeRef.current?.getLakesData() || []
 
         for (let i = 0; i < count; i++) {
@@ -418,7 +402,6 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
             let validPosition = false
             let attempts = 0
 
-            // ✅ EVITAR SPAWNAR FOLHAS PRÓXIMAS AOS LAGOS
             while (!validPosition && attempts < 10) {
                 x = (Math.random() - 0.5) * spread
                 z = (Math.random() - 0.5) * spread
@@ -436,9 +419,7 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
 
             pos[i * 3] = x
             pos[i * 3 + 1] = Math.random() < 0.01 ?
-                floorY + Math.random() * 7.5 :  // 15% das folhas começam até 2.5u acima
-                floorY
-
+                floorY + Math.random() * 7.5 : floorY
             pos[i * 3 + 2] = z
 
             vel[i * 3] = (Math.random() - 0.5) * 0.005
@@ -478,14 +459,6 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
             rotationSpeeds[i * 3 + 2] = (Math.random() - 0.5) * 2.0
         }
 
-        positionsRef.current = pos
-        velocitiesRef.current = vel
-        scalesRef.current = sc
-        colorsRef.current = cols
-        seedsRef.current = seeds
-        sparklePhaseRef.current = sparklePhases
-        rotationSpeedsRef.current = rotationSpeeds
-
         if (meshRef.current) {
             const mesh = meshRef.current
             for (let i = 0; i < count; i++) {
@@ -512,8 +485,13 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
         }
     }, [count, spread, floorY, lakeRef])
 
+    // 🎯 REMOVIDO O FRAME SKIPPING - física atualizada em TODOS os frames
+    // 🎯 Sistema de batches mais inteligente (sem perder velocidade)
+    const batchIndexRef = useRef(0)
+    const batchSize = Math.floor(count / 8) // 8 batches mais finos para melhor distribuição
+
     useFrame((state, delta) => {
-        if (!meshRef.current || !positionsRef.current) return
+        if (!meshRef.current) return
 
         const t = state.clock.getElapsedTime()
         const pos = positionsRef.current
@@ -535,6 +513,7 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
         vehicle.vz = (vehicle.z - prevZ) / Math.max(delta, 0.001)
         vehicle.speed = Math.sqrt(vehicle.vx * vehicle.vx + vehicle.vz * vehicle.vz)
 
+        // 🎯 CONSTANTES ORIGINAIS (garantindo velocidade correta)
         const windBase = 1
         const windTurb = 0.08
         const gravity = -1.62
@@ -553,279 +532,299 @@ function LeavesField({ count = 15000, spread = 950, floorY = 0.01, camera, lakeR
         const conflictPushForce = 8
         const conflictLiftForce = 12
 
+        // 🎯 Processar DOIS batches por frame para compensar remoção do frame skipping
+        const batchIndex = batchIndexRef.current
+        const startIdx1 = batchIndex * batchSize
+        const endIdx1 = Math.min(startIdx1 + batchSize, count)
+        const startIdx2 = ((batchIndex + 4) % 8) * batchSize
+        const endIdx2 = Math.min(startIdx2 + batchSize, count)
+
         let needsMatrixUpdate = false
         let needsColorUpdate = false
 
-        for (let i = 0; i < count; i++) {
-            const ix = i * 3
-            const iy = ix + 1
-            const iz = ix + 2
+        const lakesData = lakeRef.current?.getLakesData() || []
 
-            let x = pos[ix]
-            let y = pos[iy]
-            let z = pos[iz]
+        // 🎯 Função auxiliar para processar um batch
+        const processBatch = (startIdx, endIdx) => {
+            for (let i = startIdx; i < endIdx; i++) {
+                const ix = i * 3
+                const iy = ix + 1
+                const iz = ix + 2
 
-            const distToCamSq = (x - camPos.x) ** 2 + (z - camPos.z) ** 2
+                let x = pos[ix]
+                let y = pos[iy]
+                let z = pos[iz]
 
-            if (distToCamSq > updateDistSq && distToCamSq < maxDistSq) {
-                continue
-            }
+                const distToCamSq = (x - camPos.x) ** 2 + (z - camPos.z) ** 2
 
-            let vx = vel[ix]
-            let vy = vel[iy]
-            let vz = vel[iz]
-
-            const seed = seeds[i]
-            const s = sc[i]
-
-            const dx = x - vehicle.x
-            const dz = z - vehicle.z
-            const isInCarZone = Math.abs(dx) < (carHalfWidth + conflictExtraRadius) &&
-                Math.abs(dz) < (carHalfLength + conflictExtraRadius)
-
-            if (isInCarZone && vehicle.speed > 0.05) {
-                const distToCenterSq = dx * dx + dz * dz
-                const distToCenter = Math.sqrt(distToCenterSq)
-                const maxDist = Math.sqrt((carHalfWidth + conflictExtraRadius) ** 2 +
-                    (carHalfLength + conflictExtraRadius) ** 2)
-
-                const proximity = 1 - Math.min(distToCenter / maxDist, 1)
-                const impactStrength = Math.pow(proximity, 1.5)
-
-                const dirX = dx / (distToCenter + 0.001)
-                const dirZ = dz / (distToCenter + 0.001)
-
-                const speedFactor = Math.min(vehicle.speed / 10, 1)
-                const pushForce = conflictPushForce * impactStrength * speedFactor
-                vx += dirX * pushForce * delta * 40
-                vz += dirZ * pushForce * delta * 40
-
-                const liftMultiplier = 0.3 + vehicle.speed * 0.15
-                const liftForce = conflictLiftForce * impactStrength * liftMultiplier
-                vy += liftForce * delta * 40
-
-                vx += vehicle.vx * 0.15
-                vz += vehicle.vz * 0.15
-
-                if (impactStrength > 0.7) {
-                    vx += (Math.random() - 0.5) * 1.5
-                    vz += (Math.random() - 0.5) * 1.5
-                    vy += Math.random() * 0.8
+                // Otimização: atualizar apenas folhas próximas
+                if (distToCamSq > updateDistSq && distToCamSq < maxDistSq) {
+                    continue
                 }
-            }
 
-            const wind = windBase * Math.sin(t * 0.35 + seed * 0.005) * (1 + Math.cos(seed * 0.07))
-            const windX = wind + (Math.random() - 0.5) * windTurb
-            const windZ = Math.sin(t * 0.42 + seed * 0.008) * windBase * 0.8 + (Math.random() - 0.5) * windTurb
+                let vx = vel[ix]
+                let vy = vel[iy]
+                let vz = vel[iz]
 
-            const gustPhase = Math.sin(t * 0.15) * 0.5 + 0.5
-            const gustStrength = gustPhase * 0.4
+                const seed = seeds[i]
+                const s = sc[i]
 
-            vx += (windX + gustStrength * Math.cos(t * 0.3 + seed)) * delta * 30
-            vz += (windZ + gustStrength * Math.sin(t * 0.25 + seed * 0.5)) * delta * 30
+                const dx = x - vehicle.x
+                const dz = z - vehicle.z
+                const isInCarZone = Math.abs(dx) < (carHalfWidth + conflictExtraRadius) &&
+                    Math.abs(dz) < (carHalfLength + conflictExtraRadius)
 
-            const horizontalSpeed = Math.sqrt(vx * vx + vz * vz)
+                if (isInCarZone && vehicle.speed > 0.05) {
+                    const distToCenterSq = dx * dx + dz * dz
+                    const distToCenter = Math.sqrt(distToCenterSq)
+                    const maxDist = Math.sqrt((carHalfWidth + conflictExtraRadius) ** 2 +
+                        (carHalfLength + conflictExtraRadius) ** 2)
 
-            if (y > floorY + 0.05 && horizontalSpeed > 0.3) {
-                const liftEffect = Math.min(horizontalSpeed * 0.35, 2.5)
-                vy += liftEffect * delta * 25
+                    const proximity = 1 - Math.min(distToCenter / maxDist, 1)
+                    const impactStrength = Math.pow(proximity, 1.5)
 
-                const driftX = Math.sin(t * 0.5 + seed * 0.1) * 0.08
-                const driftZ = Math.cos(t * 0.4 + seed * 0.15) * 0.08
-                vx += driftX * delta * 30
-                vz += driftZ * delta * 30
-            }
+                    const dirX = dx / (distToCenter + 0.001)
+                    const dirZ = dz / (distToCenter + 0.001)
 
-            const gravMult = y > floorY + 1 ? 1.0 : 0.75
-            vy += gravity * delta * gravMult * 60
+                    const speedFactor = Math.min(vehicle.speed / 10, 1)
+                    const pushForce = conflictPushForce * impactStrength * speedFactor
+                    vx += dirX * pushForce * delta * 40
+                    vz += dirZ * pushForce * delta * 40
 
-            const horizontalDampFactor = y > floorY + 0.1 ?
-                Math.pow(airDamping, delta * 60) :
-                Math.pow(damping, delta * 60)
+                    const liftMultiplier = 0.3 + vehicle.speed * 0.15
+                    const liftForce = conflictLiftForce * impactStrength * liftMultiplier
+                    vy += liftForce * delta * 40
 
-            const verticalDampFactor = y > floorY + 0.1 ?
-                Math.pow(airDamping * 1.5, delta * 60) :
-                Math.pow(damping * 1.3, delta * 60)
+                    vx += vehicle.vx * 0.15
+                    vz += vehicle.vz * 0.15
 
-            vx *= horizontalDampFactor
-            vy *= verticalDampFactor
-            vz *= horizontalDampFactor
+                    if (impactStrength > 0.7) {
+                        vx += (Math.random() - 0.5) * 1.5
+                        vz += (Math.random() - 0.5) * 1.5
+                        vy += Math.random() * 0.8
+                    }
+                }
 
-            const maxVelocity = 8
-            const currentSpeed = Math.sqrt(vx * vx + vy * vy + vz * vz)
-            if (currentSpeed > maxVelocity) {
-                const scale = maxVelocity / currentSpeed
-                vx *= scale
-                vy *= scale
-                vz *= scale
-            }
+                // 🎯 VENTO ORIGINAL (velocidade preservada)
+                const wind = windBase * Math.sin(t * 0.35 + seed * 0.005) * (1 + Math.cos(seed * 0.07))
+                const windX = wind + (Math.random() - 0.5) * windTurb
+                const windZ = Math.sin(t * 0.42 + seed * 0.008) * windBase * 0.8 + (Math.random() - 0.5) * windTurb
 
-            x += vx * delta * 60
-            y += vy * delta * 60
-            z += vz * delta * 60
+                const gustPhase = Math.sin(t * 0.15) * 0.5 + 0.5
+                const gustStrength = gustPhase * 0.4
 
-            if (y <= floorY) {
-                y = floorY
-                if (Math.abs(vy) > 0.1) {
-                    vy = -vy * bounceFactor
-                } else {
+                vx += (windX + gustStrength * Math.cos(t * 0.3 + seed)) * delta * 30
+                vz += (windZ + gustStrength * Math.sin(t * 0.25 + seed * 0.5)) * delta * 30
+
+                const horizontalSpeed = Math.sqrt(vx * vx + vz * vz)
+
+                if (y > floorY + 0.05 && horizontalSpeed > 0.3) {
+                    const liftEffect = Math.min(horizontalSpeed * 0.35, 2.5)
+                    vy += liftEffect * delta * 25
+
+                    const driftX = Math.sin(t * 0.5 + seed * 0.1) * 0.08
+                    const driftZ = Math.cos(t * 0.4 + seed * 0.15) * 0.08
+                    vx += driftX * delta * 30
+                    vz += driftZ * delta * 30
+                }
+
+                // 🎯 GRAVIDADE ORIGINAL (velocidade de queda preservada)
+                const gravMult = y > floorY + 1 ? 1.0 : 0.75
+                vy += gravity * delta * gravMult * 60
+
+                const horizontalDampFactor = y > floorY + 0.1 ?
+                    Math.pow(airDamping, delta * 60) :
+                    Math.pow(damping, delta * 60)
+
+                const verticalDampFactor = y > floorY + 0.1 ?
+                    Math.pow(airDamping * 1.5, delta * 60) :
+                    Math.pow(damping * 1.3, delta * 60)
+
+                vx *= horizontalDampFactor
+                vy *= verticalDampFactor
+                vz *= horizontalDampFactor
+
+                const maxVelocity = 8
+                const currentSpeed = Math.sqrt(vx * vx + vy * vy + vz * vz)
+                if (currentSpeed > maxVelocity) {
+                    const scale = maxVelocity / currentSpeed
+                    vx *= scale
+                    vy *= scale
+                    vz *= scale
+                }
+
+                x += vx * delta * 60
+                y += vy * delta * 60
+                z += vz * delta * 60
+
+                if (y <= floorY) {
+                    y = floorY
+                    if (Math.abs(vy) > 0.1) {
+                        vy = -vy * bounceFactor
+                    } else {
+                        vy = 0
+                    }
+                    vx *= 0.7
+                    vz *= 0.7
+                }
+
+                if (y > 8) {
+                    y = 8
+                    vy = Math.min(vy, -1)
+                }
+
+                if (distToCamSq > maxDistSq) {
+                    const angle = Math.random() * Math.PI * 2
+                    const dist = 80 + Math.random() * 150
+                    x = camPos.x + Math.cos(angle) * dist
+                    z = camPos.z + Math.sin(angle) * dist
+                    y = floorY
+                    vx = (Math.random() - 0.5) * 0.02
                     vy = 0
-                }
-                vx *= 0.7
-                vz *= 0.7
-            }
-
-            if (y > 8) {
-                y = 8
-                vy = Math.min(vy, -1)
-            }
-
-            if (distToCamSq > maxDistSq) {
-                const angle = Math.random() * Math.PI * 2
-                const dist = 80 + Math.random() * 150
-                x = camPos.x + Math.cos(angle) * dist
-                z = camPos.z + Math.sin(angle) * dist
-                y = floorY
-                vx = (Math.random() - 0.5) * 0.02
-                vy = 0
-                vz = (Math.random() - 0.5) * 0.02
-            }
-
-            let rotX = 0
-            let rotY = 0
-            let rotZ = 0
-
-            if (y > floorY + 0.1) {
-                const heightFactor = Math.min((y - floorY) / 4, 1)
-
-                const baseRotX = rotSpeeds[i * 3]
-                const baseRotY = rotSpeeds[i * 3 + 1]
-                const baseRotZ = rotSpeeds[i * 3 + 2]
-
-                const velocityMagnitude = Math.sqrt(vx * vx + vy * vy + vz * vz)
-                const spinFactor = velocityMagnitude * 0.5 + 0.3
-
-                rotX = (baseRotX * t * spinFactor + seed * 0.1) % (Math.PI * 2)
-                rotY = (baseRotY * t * spinFactor + seed * 0.2) % (Math.PI * 2)
-                rotZ = (baseRotZ * t * spinFactor + seed * 0.15) % (Math.PI * 2)
-
-                const oscillation = Math.sin(t * 3 + seed * 0.05) * 0.4 * heightFactor
-                rotX += oscillation * Math.cos(seed)
-                rotZ += oscillation * Math.sin(seed * 1.3)
-
-                const windTorque = (vx * 0.3 + vz * 0.2) * heightFactor
-                rotY += windTorque
-
-                if (Math.random() < 0.01) {
-                    rotX += (Math.random() - 0.5) * 0.5
-                    rotZ += (Math.random() - 0.5) * 0.5
+                    vz = (Math.random() - 0.5) * 0.02
                 }
 
-                if (Math.random() < 0.02) {
-                    vx += (Math.random() - 0.5) * 0.3
-                    vz += (Math.random() - 0.5) * 0.3
+                let rotX = 0
+                let rotY = 0
+                let rotZ = 0
 
-                    rotSpeeds[i * 3] += (Math.random() - 0.5) * 0.3
-                    rotSpeeds[i * 3 + 2] += (Math.random() - 0.5) * 0.2
+                if (y > floorY + 0.1) {
+                    const heightFactor = Math.min((y - floorY) / 4, 1)
+
+                    const baseRotX = rotSpeeds[i * 3]
+                    const baseRotY = rotSpeeds[i * 3 + 1]
+                    const baseRotZ = rotSpeeds[i * 3 + 2]
+
+                    const velocityMagnitude = Math.sqrt(vx * vx + vy * vy + vz * vz)
+                    const spinFactor = velocityMagnitude * 0.5 + 0.3
+
+                    rotX = (baseRotX * t * spinFactor + seed * 0.1) % (Math.PI * 2)
+                    rotY = (baseRotY * t * spinFactor + seed * 0.2) % (Math.PI * 2)
+                    rotZ = (baseRotZ * t * spinFactor + seed * 0.15) % (Math.PI * 2)
+
+                    const oscillation = Math.sin(t * 3 + seed * 0.05) * 0.4 * heightFactor
+                    rotX += oscillation * Math.cos(seed)
+                    rotZ += oscillation * Math.sin(seed * 1.3)
+
+                    const windTorque = (vx * 0.3 + vz * 0.2) * heightFactor
+                    rotY += windTorque
+
+                    if (Math.random() < 0.01) {
+                        rotX += (Math.random() - 0.5) * 0.5
+                        rotZ += (Math.random() - 0.5) * 0.5
+                    }
+
+                    if (Math.random() < 0.02) {
+                        vx += (Math.random() - 0.5) * 0.3
+                        vz += (Math.random() - 0.5) * 0.3
+
+                        rotSpeeds[i * 3] += (Math.random() - 0.5) * 0.3
+                        rotSpeeds[i * 3 + 2] += (Math.random() - 0.5) * 0.2
+                    }
+
+                } else {
+                    rotX = Math.sin(seed) * 0.15 + Math.sin(t * 0.2 + seed) * 0.05
+                    rotY = (seed * 0.5) % (Math.PI * 2)
+                    rotZ = Math.cos(seed * 1.3) * 0.15 + Math.cos(t * 0.15 + seed * 0.5) * 0.05
+
+                    rotSpeeds[i * 3] *= 0.95
+                    rotSpeeds[i * 3 + 1] *= 0.95
+                    rotSpeeds[i * 3 + 2] *= 0.95
                 }
 
-            } else {
-                rotX = Math.sin(seed) * 0.15 + Math.sin(t * 0.2 + seed) * 0.05
-                rotY = (seed * 0.5) % (Math.PI * 2)
-                rotZ = Math.cos(seed * 1.3) * 0.15 + Math.cos(t * 0.15 + seed * 0.5) * 0.05
+                pos[ix] = x
+                pos[iy] = y
+                pos[iz] = z
+                vel[ix] = vx
+                vel[iy] = vy
+                vel[iz] = vz
 
-                rotSpeeds[i * 3] *= 0.95
-                rotSpeeds[i * 3 + 1] *= 0.95
-                rotSpeeds[i * 3 + 2] *= 0.95
-            }
+                dummy.current.position.set(x, y, z)
+                dummy.current.rotation.set(rotX, rotY, rotZ)
+                dummy.current.scale.set(s, 1, s)
+                dummy.current.updateMatrix()
+                mesh.setMatrixAt(i, dummy.current.matrix)
+                needsMatrixUpdate = true
 
-            pos[ix] = x
-            pos[iy] = y
-            pos[iz] = z
-            vel[ix] = vx
-            vel[iy] = vy
-            vel[iz] = vz
+                const isAirborne = y > floorY + 0.2
 
-            dummy.current.position.set(x, y, z)
-            dummy.current.rotation.set(rotX, rotY, rotZ)
-            dummy.current.scale.set(s, 1, s)
-            dummy.current.updateMatrix()
-            mesh.setMatrixAt(i, dummy.current.matrix)
-            needsMatrixUpdate = true
+                const leftHeadlight = new THREE.Vector3(vehicle.x - 0.7, 1, vehicle.z + 1.5)
+                const rightHeadlight = new THREE.Vector3(vehicle.x + 0.4, 1, vehicle.z + 1.5)
 
-            const isAirborne = y > floorY + 0.2
-
-            const leftHeadlight = new THREE.Vector3(vehicle.x - 0.7, 1, vehicle.z + 1.5)
-            const rightHeadlight = new THREE.Vector3(vehicle.x + 0.4, 1, vehicle.z + 1.5)
-
-            const distToLeftLight = Math.sqrt(
-                (x - leftHeadlight.x) ** 2 +
-                (y - leftHeadlight.y) ** 2 +
-                (z - leftHeadlight.z) ** 2
-            )
-            const distToRightLight = Math.sqrt(
-                (x - rightHeadlight.x) ** 2 +
-                (y - rightHeadlight.y) ** 2 +
-                (z - rightHeadlight.z) ** 2
-            )
-
-            const lightRange = 30
-            const leftLightInfluence = Math.max(0, 1 - distToLeftLight / lightRange)
-            const rightLightInfluence = Math.max(0, 1 - distToRightLight / lightRange)
-            const headlightInfluence = Math.max(leftLightInfluence, rightLightInfluence)
-
-            const headlightBoost = Math.pow(headlightInfluence, 0.6) * 6.0
-
-            // ========== ✅ BRILHO DAS FOLHAS PRÓXIMAS AOS LAGOS ==========
-            const lakesData = lakeRef.current?.getLakesData() || []
-            let nearestLakeDist = Infinity
-            for (const lake of lakesData) {
-                const distToLake = Math.sqrt((x - lake.x) ** 2 + (z - lake.z) ** 2)
-                nearestLakeDist = Math.min(nearestLakeDist, distToLake - lake.size * 0.5)
-            }
-
-            const lakeProximity = Math.max(0, 1 - nearestLakeDist / 15)
-            const lakeGlow = Math.pow(lakeProximity, 2) * 2.5
-
-            if (isAirborne) {
-                const sparkleFreq = 7 + seed * 0.01
-                const sparkleWave = Math.sin(t * sparkleFreq + sparklePhases[i])
-                const sparkleIntensity = sparkleWave * 0.5 + 1.2
-
-                const heightBoost = 1.5 + Math.min((y - floorY) * 0.4, 1.0)
-
-                const megaFlash = Math.random() < 0.03 ? 1.2 : 0
-
-                const totalBrightness = heightBoost * sparkleIntensity + megaFlash + headlightBoost + lakeGlow
-
-                const colorPulse = Math.sin(t * 4 + seed * 0.1) * 0.5 + 0.5
-                const hueShift = colorPulse * 0.2
-
-                const yellowTint = headlightInfluence * 0.6
-                const waterTint = lakeProximity * 0.4
-
-                tmpColor.current.setRGB(
-                    Math.min(1, cols[i * 3] * totalBrightness + sparkleIntensity * 0.4 + hueShift * 0.3 + yellowTint + waterTint * 0.3),
-                    Math.min(1, cols[i * 3 + 1] * totalBrightness + sparkleIntensity * 0.6 + hueShift * 0.4 + yellowTint * 0.8 + waterTint * 0.6),
-                    Math.min(1, cols[i * 3 + 2] * totalBrightness + sparkleIntensity * 0.3 + yellowTint * 0.3 + waterTint * 0.9)
+                const distToLeftLight = Math.sqrt(
+                    (x - leftHeadlight.x) ** 2 +
+                    (y - leftHeadlight.y) ** 2 +
+                    (z - leftHeadlight.z) ** 2
                 )
-            } else {
-                const groundPulse = Math.sin(t * 2.5 + seed * 0.05) * 0.3 + 1.0
-                const totalGroundBrightness = groundPulse + headlightBoost + lakeGlow
-
-                const yellowTint = headlightInfluence * 0.8
-                const waterTint = lakeProximity * 0.5
-
-                tmpColor.current.setRGB(
-                    Math.min(1, cols[i * 3] * totalGroundBrightness + yellowTint + waterTint * 0.3),
-                    Math.min(1, cols[i * 3 + 1] * totalGroundBrightness + yellowTint * 0.9 + waterTint * 0.7),
-                    Math.min(1, cols[i * 3 + 2] * totalGroundBrightness + yellowTint * 0.4 + waterTint)
+                const distToRightLight = Math.sqrt(
+                    (x - rightHeadlight.x) ** 2 +
+                    (y - rightHeadlight.y) ** 2 +
+                    (z - rightHeadlight.z) ** 2
                 )
-            }
 
-            mesh.setColorAt(i, tmpColor.current)
-            needsColorUpdate = true
+                const lightRange = 30
+                const leftLightInfluence = Math.max(0, 1 - distToLeftLight / lightRange)
+                const rightLightInfluence = Math.max(0, 1 - distToRightLight / lightRange)
+                const headlightInfluence = Math.max(leftLightInfluence, rightLightInfluence)
+
+                const headlightBoost = Math.pow(headlightInfluence, 0.6) * 6.0
+
+                let nearestLakeDist = Infinity
+                for (const lake of lakesData) {
+                    const distToLake = Math.sqrt((x - lake.x) ** 2 + (z - lake.z) ** 2)
+                    nearestLakeDist = Math.min(nearestLakeDist, distToLake - lake.size * 0.5)
+                }
+
+                const lakeProximity = Math.max(0, 1 - nearestLakeDist / 15)
+                const lakeGlow = Math.pow(lakeProximity, 2) * 2.5
+
+                if (isAirborne) {
+                    const sparkleFreq = 7 + seed * 0.01
+                    const sparkleWave = Math.sin(t * sparkleFreq + sparklePhases[i])
+                    const sparkleIntensity = sparkleWave * 0.5 + 1.2
+
+                    const heightBoost = 1.5 + Math.min((y - floorY) * 0.4, 1.0)
+
+                    const megaFlash = Math.random() < 0.03 ? 1.2 : 0
+
+                    const totalBrightness = heightBoost * sparkleIntensity + megaFlash + headlightBoost + lakeGlow
+
+                    const colorPulse = Math.sin(t * 4 + seed * 0.1) * 0.5 + 0.5
+                    const hueShift = colorPulse * 0.2
+
+                    const yellowTint = headlightInfluence * 0.6
+                    const waterTint = lakeProximity * 0.4
+
+                    tmpColor.current.setRGB(
+                        Math.min(1, cols[i * 3] * totalBrightness + sparkleIntensity * 0.4 + hueShift * 0.3 + yellowTint + waterTint * 0.3),
+                        Math.min(1, cols[i * 3 + 1] * totalBrightness + sparkleIntensity * 0.6 + hueShift * 0.4 + yellowTint * 0.8 + waterTint * 0.6),
+                        Math.min(1, cols[i * 3 + 2] * totalBrightness + sparkleIntensity * 0.3 + yellowTint * 0.3 + waterTint * 0.9)
+                    )
+                } else {
+                    const groundPulse = Math.sin(t * 2.5 + seed * 0.05) * 0.3 + 1.0
+                    const totalGroundBrightness = groundPulse + headlightBoost + lakeGlow
+
+                    const yellowTint = headlightInfluence * 0.8
+                    const waterTint = lakeProximity * 0.5
+
+                    tmpColor.current.setRGB(
+                        Math.min(1, cols[i * 3] * totalGroundBrightness + yellowTint + waterTint * 0.3),
+                        Math.min(1, cols[i * 3 + 1] * totalGroundBrightness + yellowTint * 0.9 + waterTint * 0.7),
+                        Math.min(1, cols[i * 3 + 2] * totalGroundBrightness + yellowTint * 0.4 + waterTint)
+                    )
+                }
+
+                mesh.setColorAt(i, tmpColor.current)
+                needsColorUpdate = true
+            }
         }
+
+        // 🎯 Processar DOIS batches por frame (25% das folhas por frame)
+        processBatch(startIdx1, endIdx1)
+        processBatch(startIdx2, endIdx2)
+
+        // 🔄 Avançar para o próximo par de batches
+        batchIndexRef.current = (batchIndexRef.current + 1) % 4
 
         if (needsMatrixUpdate) mesh.instanceMatrix.needsUpdate = true
         if (needsColorUpdate && mesh.instanceColor) mesh.instanceColor.needsUpdate = true

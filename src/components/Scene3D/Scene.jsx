@@ -28,6 +28,9 @@ const DriftParticles = lazy(() => import('./DriftParticles'))
  * FASE 3: Carrega no final (~5s)
  * - Moon (só aparece no final)
  * - TreeClusters (opcional, desabilitado por padrão)
+ *
+ *
+ * Remover funcoes e comentários desnecessarios
  */
 
 function LoadingFallback({ phase = 1 }) {
